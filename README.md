@@ -1,6 +1,10 @@
 # Editor Rich Presence
 ## A Discord Rich Presence for the Unity editor
 
+This is a modified Version of the Ben Wilson Version from https://assetstore.unity.com thanks
+I just fixed a few bugs to make it work on Unity 6.xxx again :)
+
+
 ![Unity Asset Store Image](https://assetstorev1-prd-cdn.unity3d.com/key-image/d514aa2a-ca58-4a63-9ae0-b27239e1f8d8.webp)
 
 Show off what you're working on in unity with Editor Rich Presence on discord.
