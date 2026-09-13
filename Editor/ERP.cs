@@ -10,47 +10,130 @@ using System.Threading.Tasks;
 using System.Threading;
 using ERP.Discord;
 using System.Diagnostics;
-using DiscordActivity = ERP.Discord.Activity;
+using UnityEngine.SceneManagement;
 using Debug = UnityEngine.Debug;
+using DiscordActivity = ERP.Discord.Activity;
 
 namespace ERP
 {
     [InitializeOnLoad]
     public static class ERP
     {
-        private const string applicationId = "509465267630374935";
-        private const string prefix = "<b>ERP</b>";
+        private const string _applicationId = "509465267630374935";
+        private const string _prefix = "<b>Editor Rich Presence</b>";
 
         public static Discord.Discord discord { get; private set; }
 
 
-        public static string projectName { get; private set; }
-        public static string sceneName { get; private set; }
-        public static bool showSceneName = true;
-        public static bool showProjectName = true;
-        public static bool resetOnSceneChange = false;
-        public static bool debugMode = false;
+        public static string ProjectName { get; private set; }
+        public static string SceneName { get; private set; }
+        public static bool ShowSceneName
+        {
+            set
+            {
+                if (value == _showSceneName)
+                    return;
+                
+                _showSceneName = value;
+                ERPSettings.SaveSettings();
+                UpdateActivity();
+            }
+            get
+            {
+                return _showSceneName;
+            } 
+        }
+        public static bool ShowProjectName
+        {
+            set
+            {
+                if (value == _showProjectName)
+                    return;
+                
+                _showProjectName = value;
+                ERPSettings.SaveSettings();
+                UpdateActivity();
+            }
+            get
+            {
+                return _showProjectName;
+            } 
+        }
+        public static bool ResetOnSceneChange
+        {
+            set
+            {
+                if (value == _resetOnSceneChange)
+                    return;
+                
+                _resetOnSceneChange = value;
+                ERPSettings.SaveSettings();
+                UpdateActivity();
+            }
+            get
+            {
+                return _resetOnSceneChange;
+            } 
+        }
+        public static bool DebugMode
+        {
+            set
+            {
+                if (value == _debugMode)
+                    return;
+                
+                _debugMode = value;
+                ERPSettings.SaveSettings();
+            }
+            get
+            {
+                return _debugMode;
+            }
+        }
+        
         public static bool EditorClosed = true;
         public static long lastTimestamp = 0;
         public static long lastSessionID = 0;
         public static bool Errored = false;
 
         public static bool Failed;
+
+        private static bool _showSceneName = true;
+        private static bool _showProjectName = true;
+        private static bool _resetOnSceneChange = false;
+        private static bool _debugMode = false;
+        
         static ERP()
         {
             ERPSettings.GetSettings();
             DelayStart();
         }
+
+        public static void LoadSettings(ERPSettings settings)
+        {
+            _showSceneName = settings.showSceneName;
+            _showProjectName = settings.showProjectName;
+            _resetOnSceneChange = settings.resetOnSceneChange;
+            _debugMode = settings.debugMode;
+            EditorClosed = settings.EditorClosed;
+            lastTimestamp = settings.LastTimestamp;
+            lastSessionID = settings.LastSessionID;
+            Errored = settings.Errored;
+            Log("Applied Settings from file");
+            GetNames();
+        }
+        
         public static async void DelayStart(int delay = 1000)
         {
             await Task.Delay(delay);
             Init();
         }
+        
         public static void Init()
         {
             if (Errored && lastSessionID == EditorAnalyticsSessionInfo.id)
             {
-                if (debugMode)
+                if (DebugMode)
                     LogWarning($"Error but in same session");
                 return;
             }
@@ -66,19 +149,27 @@ namespace ERP
 
             try
             {
-                discord = new Discord.Discord(long.Parse(applicationId), (long)CreateFlags.Default);
+                if (discord == null)
+                {
+                    Log("Creating new discord");
+                    discord = new Discord.Discord(long.Parse(_applicationId), (long)CreateFlags.NoRequireDiscord);
+                }
+                else
+                {
+                    Log("Discord isn't null but we are trying to creating a new one");
+                }
             }
             catch (Exception e)
             {
-                if (debugMode)
-                    LogWarning("Expected Error, retrying\n" + e.ToString());
+                if (DebugMode)
+                    LogWarning($"Expected Error, retrying\n{e}");
                 if (!Failed)
                     DelayStart(2000);
                 Failed = true;
                 return;
             }
 
-            if (!resetOnSceneChange || EditorAnalyticsSessionInfo.id != lastSessionID)
+            if (!ResetOnSceneChange || EditorAnalyticsSessionInfo.id != lastSessionID)
             {
                 lastTimestamp = GetTimestamp();
                 ERPSettings.SaveSettings();
@@ -86,20 +177,30 @@ namespace ERP
 
             lastSessionID = EditorAnalyticsSessionInfo.id;
 
-            projectName = Application.productName;
-            sceneName = EditorSceneManager.GetActiveScene().name;
+            GetNames();
             UpdateActivity();
 
             EditorApplication.update += Update;
             EditorSceneManager.sceneOpened += SceneOpened;
             Log("Started!");
+
+            if (ERPWindow.Window != null)
+            {
+                ERPWindow.Window.Repaint();
+            }
+        }
+
+        private static void GetNames()
+        {
+            ProjectName = Application.productName;
+            SceneName = SceneManager.GetActiveScene().name;
         }
 
         private static void SceneOpened(UnityEngine.SceneManagement.Scene scene, OpenSceneMode mode)
         {
-            if (resetOnSceneChange)
+            if (ResetOnSceneChange)
                 lastTimestamp = GetTimestamp();
-            sceneName = EditorSceneManager.GetActiveScene().name;
+            SceneName = EditorSceneManager.GetActiveScene().name;
             UpdateActivity();
         }
 
@@ -109,21 +210,25 @@ namespace ERP
                 discord.RunCallbacks();
 
         }
-        public static void UpdateActivity()
+        
+        private static void UpdateActivity()
         {
             Log("Updating Activity");
             if (discord == null)
                 Init();
 
-            projectName = Application.productName;
-            sceneName = EditorSceneManager.GetActiveScene().name;
+            if (Failed)
+                return;
+
+            ProjectName = Application.productName;
+            SceneName = EditorSceneManager.GetActiveScene().name;
 
             var activityManager = discord.GetActivityManager();
 
             DiscordActivity activity = new DiscordActivity
             {
-                State = showProjectName ? projectName : "",
-                Details = showSceneName ? sceneName : "",
+                State = ShowProjectName ? ProjectName : "",
+                Details = ShowSceneName ? SceneName : "",
                 Timestamps =
                 {
                     Start = lastTimestamp
@@ -132,8 +237,8 @@ namespace ERP
                 {
                     LargeImage = "logo",
                     LargeText = "Unity " + Application.unityVersion,
-                    SmallImage = "marshmello",
-                    SmallText = "ERP on Unity Asset Store",
+                    SmallImage = "ERP",
+                    SmallText = "ERP",
                 },
             };
 
@@ -147,9 +252,10 @@ namespace ERP
 
             ERPSettings.SaveSettings();
         }
+        
         public static long GetTimestamp()
         {
-            if (!resetOnSceneChange)
+            if (!ResetOnSceneChange)
             {
                 TimeSpan timeSpan = TimeSpan.FromMilliseconds(EditorAnalyticsSessionInfo.elapsedTime);
                 long timestamp = DateTimeOffset.Now.Add(timeSpan).ToUnixTimeSeconds();
@@ -160,21 +266,24 @@ namespace ERP
             Log("Got time stamp: " + unixTimestamp);
             return unixTimestamp;
         }
+        
         public static void Log(object message)
         {
-            if (debugMode)
-                Debug.Log(prefix + ": " + message);
+            if (DebugMode)
+                Debug.Log(_prefix + ": " + message);
         }
+        
         public static void LogWarning(object message)
         {
-            if (debugMode)
-                Debug.LogWarning(prefix + ": " + message);
+            if (DebugMode)
+                Debug.LogWarning(_prefix + ": " + message);
         }
+        
         public static void LogError(object message)
         {
-            Debug.LogError(prefix + ": " + message);
+            Debug.LogError(_prefix + ": " + message);
         }
-
+        
         private static bool DiscordRunning()
         {
             Process[] processes = Process.GetProcessesByName("Discord");
@@ -189,16 +298,12 @@ namespace ERP
                 }
             }
 
-            if (debugMode)
+            if (DebugMode)
             {
-                for (int i = 0; i < processes.Length; i++)
-                {
-                    Log($"({i}/{processes.Length - 1})Found Process {processes[i].ProcessName}");
-                }
+                Log($"Found a total of {processes.Length} processes");
             }
             return processes.Length != 0;
         }
-
     }
 }
 #endif
